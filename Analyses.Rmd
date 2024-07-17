@@ -1,0 +1,1731 @@
+---
+title: "Analyses"
+author: "Hannah Corenblum"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(readxl)
+library(tidyverse)
+library(mediation)
+library(corrplot)
+library(mice)
+library(htmltools)
+library(knitr)
+library(broom)
+library(performance)
+library(interactions)
+library(see)
+library(ggplot2)
+library(jtools)
+library(broom.mixed)
+library(huxtable)
+library(kableExtra)
+library(janitor)
+library(openxlsx)
+library(psych)
+library(e1071)
+library(psych)
+library(e1071)  
+library(gt)
+library(dplyr)
+library(webshot2)
+library(ggprism) 
+library(ggExtra)
+library(olsrr)
+library(lm.beta)
+library(papaja)
+
+
+#What the code is showing:
+
+# Chunk two: Bringing in datasets that contains the word norms for other semantic and lexical dimensions and clean names
+# Chunk three: Standardizing behavioural measures that are not rt (RT is already in Z score form)
+# Chunk four: Bringing in cleaned cognition norm datasets 
+# Chunk five: Filtering out words from objects that less than 15% of participants didn't know, and words that have less than 10 ratings
+# Chunk six: merging lexical and semantic predictor norms with cognition norms 
+# Chunk seven: Calculating split half reliability
+# Chunk eight:  Calculating Validity
+# Chunk nine: Creating a correlation matrix
+# Chunk ten: Hierarchical regression for LDT Reaction time 
+# Chunk eleven: LDT reaction time cognition interaction with concreteness
+# Chunk twelve: Hierarchical regression for LDT accuracy
+# Chunk thirteen: LDT accuracy cognition interaction with concreteness
+# Chunk fourteen: Hierarchical regression for SDT reaction time for abstract words
+# Chunk fifteen: Abstract SDT reaction time cognition interaction with concreteness
+# Chunk sixteen: Hierarchical regression for SDT accuracy for abstract words
+# Chunk seventeen: Abstract SDT accuracy cognition interaction with concreteness
+# Chunk eighteen:  Hierarchical regression for SDT reaction time for concrete words
+# Chunk nineteen: Concrete SDT reaction time cognition interaction with concreteness
+# Chunk twenty: Hierarchical regression for SDT accuracy for concrete words
+# Chunk twenty one: Concrete SDT accuracy cognition interaction with concreteness
+# Chunk twenty two: Hierarchical regression for WKT reaction time
+# Chunk twenty three: WKT reaction time cognition interaction with concreteness
+# Chunk twenty four: Hierarchical regression for WKT word prevalence 
+# Chunk twenty five: WKT prevlance cognition interaction with concreteness
+
+```
+
+
+
+```{r chunktwo}
+
+#Previous cognition norms from Binder et al., 2016
+bindercontrol <- read_excel("./bindercontrol.xlsx")
+
+
+#Boi norms from Pexman et al., 2019
+boidata <- read_excel("./BOI.xlsx")
+
+
+#Sensory experience norms from Juhaz and Yap 2012
+sensoryratings <- read_excel("./sensoryratings.xls")
+
+
+#Semantic diversity norms from Hoffman et al., 2013
+semdratings <- read_excel("./semanticdiversityratings.xlsx")
+
+
+#LDT rt and z scores from Balota et al., 2017
+rtandzscores <- read_excel("./meanRTandzscores.xlsx")
+rtandzscores <- dplyr::select(rtandzscores, words, ldtz)
+ldtz <- rtandzscores
+
+#Parts of speech norms from Brysbaert et al., 2012
+wordtype <- read_excel("./partsofspeech.xlsx")
+
+
+#compliation of norms including  dominance (Warriner et al., 2013), arousal (warriner et al., 2013) , valence (warriner et al., 2013), imageability (Cortese and Fugett., 2004), concreteness (Brysbaert et al., 2014) , socialness (Diveica et al., 2022), lg_subtlwf (Brysbaert and New., 2009)
+seven <- read_excel("./valencearousal.xlsx")
+seven <- seven |> 
+  clean_names()
+seven <- dplyr::select(seven, words, dominance_warriner, arousal_warriner, val_ext,
+                                valence_warriner, imageability, concreteness, socialness, lg_subtlwf )
+
+#compliation of lexical norms including length (Brysbaert & New, 2009), old, and pld (Yarkoni et al., 2008)
+three <- read_excel("./length.xlsx")
+
+three <- three |> 
+  rename(words = Word) |> 
+  clean_names()
+three <-  dplyr::select(three, words, length, old, pld)
+
+#age of acquisition norms (Brysbaert et al., 2017)
+ao_a <- read_excel("./ao_a.xlsx")
+
+
+
+
+#Semantic decision task norms (Pexman et al., 2017)
+sdtdata <- read_excel("./sdtdata.xlsx")
+
+
+#lexical decision task accuracy data (Balota et al., 2007)
+ldtaccuracy <- read_excel("./ldtaccuracy.xlsx")
+
+
+#Word knowledge task data ((ECP; Mandera et al., 2020)
+wktdata <- read_excel("./wordknowledgetaskdata.xlsx")
+
+
+
+```
+
+
+```{r chunkthree}
+# Standardize behavioural measures other than RT
+
+ldtaccuracy <- ldtaccuracy %>%
+  mutate(ldtaccuracy = scale(ldtaccuracy, center = TRUE, scale = TRUE))
+
+
+sdtdata <- sdtdata %>%
+  mutate(ACC = scale(ACC, center = TRUE, scale = TRUE))
+
+
+wktdata <- wktdata %>%
+  mutate(prevalence = scale(prevalence, center = TRUE, scale = TRUE))
+
+```
+
+
+
+
+```{r chunkfour, echo=FALSE}
+
+#Cognition norms set #1: cognition norms that have the regular number of participant ratings (i.e. 10-38 ratings)
+#Cognition norms set #2: cognition norms that have the large number of participant ratings (i.e. around 120 ratings per word)
+
+#Cognition norms set #1 
+mainanalysescognition <- read_excel("./cognitionnormssetone.xlsx")
+cognitionratings <- mainanalysescognition |> 
+  rename(words = spreadsheet_word, 
+         cognition = mean_rating)
+
+#Cognition norms set #1 not including control words
+cognitionratingsnoncontrol <- read_excel("./noncontrolssetone.xlsx")
+cognitionratingsnoncontrol <- cognitionratingsnoncontrol |> 
+  rename(words = spreadsheet_word, 
+         cognition = mean_rating)
+
+#Cognition norms set #2 
+cognitionratings2 <- read_excel("./cognitionnormssettwo.xlsx")
+cognitionratings2 <- cognitionratings2 |> 
+  rename(words = spreadsheet_word, 
+         cognition = mean_rating)
+
+#Cognition norms set #2 not including control words
+cognitionratings2noncontrol <- read_excel("./noncontrolssettwo.xlsx")
+cognitionratings2noncontrol <- cognitionratings2noncontrol |> 
+  rename(words = spreadsheet_word,
+         cognition = mean_rating)
+
+#cognition norms set #1 & set #2 combined - all cognition norms including norms that have the regular number of participant ratings AND norms where a large subset of participants rated the words. Also includes words with less than 10 ratings, and words that 15% or more of participants reported not knowing)
+allcognition <- read_excel("./allcognitionratings.xlsx")
+allcognitionratings <- allcognition |> 
+  rename(words = spreadsheet_word, 
+         cognition = mean_rating)
+
+
+
+#contains 20 randomly sampled ratings set #2 (to be added in analyses later to make number of participant ratings stable) 
+extraratings <- read_excel("./extraratings.xlsx")
+extraratings <- extraratings |> 
+  rename(words = spreadsheet_word, 
+         cognition = mean_rating)
+
+#contains 20 randonmly sampled control ratings for sets #1 and #2 (to be added in analyses later to make number of participants ratings stable)
+sampledcontrols <- read_excel("./controlssampled.xlsx")
+sampledcontrols <- sampledcontrols |> 
+  rename(words = spreadsheet_word,
+         cognition = mean_rating)
+
+#words where more than 15% or more of raters did not know the words (last words to be removed from analyses)
+totalwordsparticipantsdidnotknow <- read_excel("./totalwordsparticipantsdidnotknow.xlsx")
+totalwordsparticipantsdidnotknow <- totalwordsparticipantsdidnotknow |> 
+  rename(words = spreadsheet_word)
+
+
+#all words from analysis 1, + 20 extra ratings from analysis 2 
+cognitionratings <- rbind(cognitionratings, extraratings)
+
+#non-control words wfrom analysis 1, + 20 extra ratings words from analysis 2
+cognitionratingsnoncontrol <- rbind(cognitionratingsnoncontrol, extraratings)
+
+#COGNITION RATINGS DATASET THAT WE ARE ANALYZING IS BELOW. This includes the cognition norms with the normal amount of ratings (from "cognitionratingsnoncontrol"), 20 randomly sampled ratings from the control words (from "extraratings)
+
+totalcognitionratings <- rbind(sampledcontrols, cognitionratingsnoncontrol)
+```
+
+
+```{r chunkfive}
+#Filter out words from objects that less than 15% of participants didn't know, and words that have less than 10 ratings 
+
+#extract the words that need to be excluded
+words_to_remove <- totalwordsparticipantsdidnotknow$words
+
+# filter out matching words in words_to_remove
+cognitionratings <- cognitionratings %>%
+  filter(!(words %in% words_to_remove))
+
+cognitionratingsnoncontrol <- cognitionratingsnoncontrol %>%
+  filter(!(words %in% words_to_remove))
+
+cognitionratings2 <- cognitionratings2 %>%
+  filter(!(words %in% words_to_remove))
+
+cognitionratings2noncontrol <- cognitionratings2noncontrol %>%
+  filter(!(words %in% words_to_remove))
+
+totalcognitionratings <- totalcognitionratings %>%
+  filter(!(words %in% words_to_remove))
+
+#2.
+
+# Create an object with words that have less than 10 ratings
+wordswithlessthantenratings <- cognitionratings |> 
+  filter(rating_count < 10)
+
+# Filter out words from analyses that have less than 10 ratings per word. 
+cognitionratings <- cognitionratings |> 
+  filter(rating_count >= 10)
+
+cognitionratingsnoncontrol <- cognitionratingsnoncontrol |> 
+  filter(rating_count >= 10)
+
+cognitionratings2 <- cognitionratings2 |> 
+  filter(rating_count >= 10)
+
+cognitionratings2noncontrol <- cognitionratings2noncontrol |> 
+  filter(rating_count >= 10)
+
+totalcognitionratings <- totalcognitionratings |> 
+  filter(rating_count >= 10)
+```
+
+```{r chunksix}
+#combine data
+merged_data <- left_join(totalcognitionratings, seven, by = "words")
+merged_data <- left_join(merged_data, sensoryratings, by = "words")
+merged_data <- left_join(merged_data, three, by = "words")
+merged_data <- left_join(merged_data, semdratings, by = "words")
+merged_data <- left_join(merged_data, boidata, by = "words")
+merged_data <- left_join(merged_data, ao_a, by = "words")
+
+
+
+# Convert 'imageability' and 'lg_subtlwf' from character to numeric
+merged_data <- merged_data %>%
+  mutate(imageability = as.numeric(as.character(imageability)),
+         lg_subtlwf = as.numeric(as.character(lg_subtlwf)))
+
+# Filter and reassign back to merged_data
+merged_data <- merged_data %>%
+  filter(!is.na(cognition))
+
+```
+
+
+```{r chunkseven}
+
+
+#RELIABILITY
+
+#all control word ratings from both set 1 and set 2
+allcontrols <- read_excel("./allcontrols.xlsx")
+
+
+# Reshape the data from long to wide format
+wide_data <- allcontrols %>%
+  pivot_wider(names_from = spreadsheet_word, values_from = response)
+
+
+# Remove the participant ID column for the reliability calculation using dplyr's select
+wide_data <- wide_data %>% dplyr::select(-participant_private_id)
+
+# Ensure the data is numeric
+wide_data <- as.data.frame(lapply(wide_data, as.numeric))
+
+# Remove rows with any missing values
+wide_data_complete <- wide_data[complete.cases(wide_data), ]
+
+
+# Function to calculate split-half reliability with Spearman-Brown correction
+# and calculate mean and standard deviation of the reliabilities
+split_half_reliability <- function(data, n_splits = 100) {
+  reliabilities <- numeric(n_splits)
+  
+  for (i in 1:n_splits) {
+    # Randomly split the items
+    items <- sample(1:ncol(data))
+    half <- length(items) / 2
+    set1 <- data[, items[1:half]]
+    set2 <- data[, items[(half + 1):ncol(data)]]
+    
+    # Calculate the correlation between the two halves
+    r <- cor(rowMeans(set1, na.rm = TRUE), rowMeans(set2, na.rm = TRUE), method = "spearman")
+    
+    # Spearman-Brown correction
+    reliabilities[i] <- (2 * r) / (1 + r)
+  }
+  
+  # Calculate mean and standard deviation of reliabilities
+  mean_reliability <- mean(reliabilities)
+  sd_reliability <- sd(reliabilities)
+  
+  return(list(mean = mean_reliability, sd = sd_reliability))
+}
+
+# Compute split-half reliability and print the results
+reliability_results <- split_half_reliability(wide_data_complete)
+print(paste("Mean Reliability:", reliability_results$mean))
+print(paste("Standard Deviation of Reliability:", reliability_results$sd))
+
+```
+
+```{r chunkeight}
+
+
+#check the validity between our control word ratings and Binder et al., 2016 previous cognition ratings
+
+# binders control ratings
+binderdata <- read_excel("./bindercontrol.xlsx")
+binderdata <- dplyr::select(binderdata, words, cognition )
+
+binderdata <- binderdata %>%
+  mutate(words = ifelse(words == "broccoli", "brocolli", words))
+
+binderdata <- binderdata %>%
+  rename(spreadsheet_word = words)
+
+
+# Create a new object from 'totalcognitionratings' and rename the 'words' column
+totalcognitionratings_new <- totalcognitionratings |> 
+  rename(spreadsheet_word = words) 
+
+totalcognitionratings_new <- dplyr::select(totalcognitionratings_new, spreadsheet_word, cognition)
+
+# Merge the data frames on the 'spreadsheet_word' column
+validitycheck <- merge(binderdata, totalcognitionratings_new, by = "spreadsheet_word", suffixes = c("_binder", "_total"))
+
+# Check the first few rows to understand the structure
+head(validitycheck)
+
+# Calculate the Spearman correlation between the cognition ratings
+correlation_result <- cor(validitycheck$cognition_binder, validitycheck$cognition_total, method = "spearman")
+
+# Print the correlation result
+print(paste("Spearman Correlation:", correlation_result))
+
+```
+
+```{r chunknine}
+
+
+######## CORRELATION MATRIX
+
+# Selecting and renaming columns in the data
+correlationmatrix <- merged_data %>%
+  dplyr::select(words, cognition, dominance_warriner, 
+                arousal_warriner, val_ext, imageability, 
+                concreteness, socialness, lg_subtlwf, ser, length,
+                old, pld, semD, boi, ao_atestbased, ao_arating) %>%
+  dplyr::rename(Cognition = cognition,
+                Dominance = dominance_warriner,
+                Arousal = arousal_warriner,
+                "Valence Extremity" = val_ext,
+                Imageability = imageability,
+                Concreteness = concreteness,
+                Socialness = socialness,
+                Frequency = lg_subtlwf,
+                SER = ser,
+                Length = length,
+                OLD = old,
+                PLD = pld,
+                "Semantic Diversity" = semD,
+                BOI = boi,
+                "AoA Test Based" = ao_atestbased,
+                "AoA Rating Based" = ao_arating)
+
+# Removing the 'words' column before calculating correlations since it's categorical
+numeric_data <- correlationmatrix %>% dplyr::select(-words)
+
+
+
+# Calculating the correlation matrix
+corr_matrix <- cor(numeric_data, use = "pairwise.complete.obs")
+
+# Define a custom color palette
+custom_col <- colorRampPalette(c("grey", "white", "purple"))(200)
+
+# Generate the correlation plot with smaller numbers inside the cells
+corrplot::corrplot(corr_matrix, method = "color",
+                   type = "lower",  # Show only the lower triangle of the matrix
+                   col = custom_col,  # Custom color gradient from green to white to purple
+                   tl.col = "black",  # Label color
+                   tl.srt = 45,       # Label rotation in degrees
+                   addCoef.col = "black",  # Color of the correlation coefficients
+                   diag = FALSE,      # Exclude the diagonal
+                   tl.cex = 0.7,      # Text label size
+                   number.cex = 0.5)  # Reduce the size of the correlation coefficients
+
+
+```
+
+
+
+```{r chunkten, include=FALSE}
+
+
+# Prepare the data
+regressionanalysisdata <- merged_data
+regressionanalysisdata <- left_join(regressionanalysisdata, ldtz, by = "words")
+regressionanalysisdata <- dplyr::select(regressionanalysisdata, words, cognition, val_ext, 
+                                        concreteness, socialness, lg_subtlwf, length, semD, ao_arating, ldtz)
+regressionanalysisdata <- na.omit(regressionanalysisdata)
+
+# Model 1: Lexical Predictors Only
+model_step1 <- lm(ldtz ~ scale(length, scale = FALSE) + 
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE),
+                  data = regressionanalysisdata)
+model1tidy <- tidy(model_step1) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(model_step1)), 3)) %>%
+  rename(predictor = term) %>%
+   mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model 2:  Semantic Predictors
+model_step2 <- lm(ldtz ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE), data = regressionanalysisdata) 
+  
+model2tidy <- tidy(model_step2) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(model_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+
+
+# Model 3: Adding on a interaction
+model_step3 <- lm(ldtz ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE) + scale(cognition, scale = FALSE) * scale(concreteness, scale = FALSE), data = regressionanalysisdata) 
+  
+model3tidy <- tidy(model_step3) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(model_step3)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    predictor == "scale(cognition, scale = FALSE):scale(concreteness, scale = FALSE)" ~ "Cognition X Concreteness",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 3", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model comparison to get R^2 and Delta R^2
+model1_r2 <- summary(model_step1)$r.squared
+model2_r2 <- summary(model_step2)$r.squared
+model3_r2 <- summary(model_step3)$r.squared
+delta_r2 <- model2_r2 - model1_r2
+delta2_r2 <- model3_r2 - model2_r2
+
+# Combine the three tidy datasets
+combined_model_tidy <- bind_rows(model1tidy, model2tidy, model3tidy)
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+combined_model_tidy <- combined_model_tidy %>%
+  mutate(
+    R_squared = case_when(
+      predictor == "Step 1" ~ model1_r2,
+      predictor == "Step 2" ~ model2_r2,
+      predictor == "Step 3" ~ model3_r2,
+      TRUE ~ NA_real_
+    ),
+    Delta_R_squared = case_when(
+      predictor == "Step 2" ~ delta_r2,
+      predictor == "Step 3" ~ delta2_r2,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Filter specific rows from combined_model_tidy
+ldtcombinedmodel <- combined_model_tidy %>%
+  slice(c(1:6, 11:16, 26))
+
+
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+gt_table <- gt(ldtcombinedmodel) %>%
+  tab_header(
+    title = "zRTs"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  ) 
+
+    
+```
+
+
+```{r chunkeleven, include=FALSE}
+#LDT Interaction
+
+# prepare data
+LDT_dat <- regressionanalysisdata %>% 
+  dplyr::select(-words) 
+LDT_dat <- LDT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+LDT_RT <- lm(ldtz ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, LDT_dat)
+
+
+f1 <- interact_plot(LDT_RT, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("LDT RT") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+
+
+```{r chunktwelve, include=FALSE}
+
+
+#LDT ACCURACY SCORES
+
+regressionanalysisdata2 <- merged_data
+ldtaccuracydata <- left_join(regressionanalysisdata2, ldtaccuracy, by = "words")
+ldtaccuracydata <-  dplyr::select(ldtaccuracydata, words, cognition, val_ext, 
+                                         concreteness, socialness, lg_subtlwf, length, semD, ao_arating, ldtaccuracy)
+ldtaccuracydata <- na.omit(ldtaccuracydata)
+
+
+#Lexical Predictors only
+
+accuracymodel_step1 <- lm(data = ldtaccuracydata, ldtaccuracy ~ scale(length, scale = FALSE) + 
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE))
+accuracymodel1tidy <- tidy(accuracymodel_step1) %>% 
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round ((statistic^2) / (statistic^2 + df.residual(accuracymodel_step1)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+accuracymodel1.glance <- glance(accuracymodel_step1)
+
+
+#MODEL 2: Semantic Predictors
+
+
+accuracymodel_step2 <- lm(data = ldtaccuracydata, ldtaccuracy ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE))
+
+
+
+accuracymodel2tidy <- tidy(accuracymodel_step2) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(accuracymodel_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+#STEP 3: COGNITION X CONCRETENESS INTERACTION:
+
+#MODEL 2: Semantic Predictors
+
+
+accuracymodel_step3 <- lm(data = ldtaccuracydata, ldtaccuracy ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE) + scale(cognition, scale = FALSE) * scale(concreteness, scale = FALSE))
+
+
+
+accuracymodel3tidy <- tidy(accuracymodel_step3) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(accuracymodel_step3)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    predictor == "scale(cognition, scale = FALSE):scale(concreteness, scale = FALSE)" ~ "Cognition X Concreteness",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 3", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+          
+          
+          
+          
+          
+          
+          
+# Model comparison to get R^2 and Delta R^2
+accuracymodel1_r2 <- summary(accuracymodel_step1)$r.squared
+accuracymodel2_r2 <- summary(accuracymodel_step2)$r.squared
+accuracymodel3_r2 <- summary(accuracymodel_step3)$r.squared
+accuracydelta_r2 <- accuracymodel2_r2 - accuracymodel1_r2
+accuracydelta2_r2 <- accuracymodel3_r2 - accuracymodel2_r2
+
+
+# Combine the two tidy datasets
+accuracycombined_model_tidy <- bind_rows(accuracymodel1tidy, accuracymodel2tidy, accuracymodel3tidy)
+
+
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+accuracycombined_model_tidy <- accuracycombined_model_tidy %>%
+  mutate(
+    R_squared = case_when(
+      predictor == "Step 1" ~ accuracymodel1_r2,
+      predictor == "Step 2" ~ accuracymodel2_r2,
+      predictor == "Step 3" ~ accuracymodel3_r2,
+      TRUE ~ NA_real_
+    ),
+    Delta_R_squared = case_when(
+      predictor == "Step 2" ~ accuracydelta_r2,
+      predictor == "Step 3" ~ accuracydelta2_r2,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Filter specific rows from combined_model_tidy
+accuracycombinedmodel <- accuracycombined_model_tidy %>%
+  slice(c(1:6, 11:16, 26))
+
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+accuracygt_table <- gt(accuracycombinedmodel) %>%
+  tab_header(
+    title = "Accuracy Rates"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  )
+
+
+print(accuracygt_table)
+
+
+```
+
+
+
+```{r chunkthirteen, include=FALSE}
+
+# Summarize cognition and concreteness using dplyr with select
+
+accuracyLDT_dat <- ldtaccuracydata %>% 
+  dplyr::select(-words) 
+accuracyLDT_dat <- accuracyLDT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+ldt_accuracy <- lm(ldtaccuracy ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, accuracyLDT_dat)
+
+
+f2 <- interact_plot(ldt_accuracy, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("LDT Accuracy") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+
+
+```{r chunkfourteen, include=FALSE}
+
+
+# SEMANTIC DECISION TASK DATA REACTION TIME
+
+###### HIERARCHICAL REGRESSION
+
+#### FOR ABSTRACT WORDS
+abstractsdtrtdata <- sdtdata[sdtdata$wordtype != "Concrete", ]
+sdtregression <- merged_data
+abstractsdtregression <- left_join(sdtregression, abstractsdtrtdata, by = "words")
+abstractsdtregression1 <-  dplyr::select(abstractsdtregression, words, cognition, val_ext, 
+                                         concreteness, socialness, lg_subtlwf, length, semD,
+                                ao_arating, zRTclean_mean)
+
+abstractsdtregression1 <- na.omit(abstractsdtregression1)
+
+abstractsdtmodel1_step1 <- lm(data = abstractsdtregression1, zRTclean_mean ~ scale(length, scale = FALSE) + 
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE))
+
+abstractsdtmodel1tidy <- tidy(abstractsdtmodel1_step1)
+
+
+#CLICK THIS TO VIEW MODEL WITH ONLY LEXICAL PREDICTORS
+abstractsdtmodel1tidy <- abstractsdtmodel1tidy %>% 
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round ((statistic^2) / (statistic^2 + df.residual(abstractsdtmodel1_step1)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+abstractsdtmodel1.glance <- glance(abstractsdtmodel1_step1)
+
+
+
+
+#MODEL 2: Lexical + Semantic Predictors
+
+
+
+abstractsdtmodel1_step2 <- lm(data = abstractsdtregression1, zRTclean_mean ~ scale(length, scale = FALSE) +
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                       scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                       scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                       scale(semD, scale = FALSE))
+
+abstractsdtmodel2tidy <- tidy(abstractsdtmodel1_step2)
+
+#Click here to view model 2 :) 
+abstractsdtmodel2tidy <- abstractsdtmodel2tidy %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(abstractsdtmodel1_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model comparison to get R^2 and Delta R^2
+abstractmodel1_r2 <- summary(abstractsdtmodel1_step1)$r.squared
+abstractmodel2_r2 <- summary(abstractsdtmodel1_step2)$r.squared
+abstractdelta_r2 <- abstractmodel2_r2 - abstractmodel1_r2
+
+
+abstractmodel2.glance <- glance(abstractsdtmodel1_step2)
+
+
+
+# Combine the two tidy datasets
+abstractcombined_model_tidy <- bind_rows(abstractsdtmodel1tidy, abstractsdtmodel2tidy)
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+abstractcombined_model_tidy <- abstractcombined_model_tidy %>%
+  mutate(R_squared = ifelse(predictor == "Step 1", abstractmodel1_r2, 
+                            ifelse(predictor == "Step 2", abstractmodel2_r2, NA)),
+         Delta_R_squared = ifelse(predictor == "Step 2", abstractdelta_r2, NA))
+
+
+# Filter specific rows from combined_model_tidy
+abstractcombinedmodel <- abstractcombined_model_tidy %>%
+  slice(c(1:6, 11:15))
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+abstractgt_table <- gt(abstractcombinedmodel) %>%
+  tab_header(
+    title = "zRTs"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  )
+
+
+print(abstractgt_table)
+
+
+
+```
+
+
+```{r chunkfifteen, include=FALSE}
+
+#interaction for abstract words in the SDT RT cognition x concreteness
+
+
+abstractSDT_dat <- abstractsdtregression1 %>% 
+  dplyr::select(-words) 
+abstractSDT_dat <- abstractSDT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+abstractSDT_RT <- lm(zRTclean_mean ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, abstractSDT_dat)
+
+
+f3 <- interact_plot(abstractSDT_RT, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("Abstract SDT RT") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+```{r chunksixteen, include=FALSE}
+
+### SEMANTIC DECISION TASK DATA ACCURACY
+
+###### HIERARCHICAL REGRESSION
+
+#### FOR ABSTRACT WORDS
+abstractaccuracysdtregression <-  dplyr::select(abstractsdtregression, words, cognition, val_ext, 
+                                         concreteness, socialness, lg_subtlwf, length, semD,
+                                ao_arating, ACC)
+
+abstractaccuracysdtregression <- na.omit(abstractaccuracysdtregression)
+
+abstractaccuracysdtmodel1_step1 <- lm(data = abstractaccuracysdtregression, ACC ~ scale(length, scale = FALSE) + 
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE))
+
+abstractaccuracysdtmodel1tidy <- tidy(abstractaccuracysdtmodel1_step1)
+
+
+#CLICK THIS TO VIEW MODEL WITH ONLY LEXICAL PREDICTORS
+abstractaccuracysdtmodel1tidy <- abstractaccuracysdtmodel1tidy %>% 
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round ((statistic^2) / (statistic^2 + df.residual(abstractaccuracysdtmodel1_step1)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+abstractaccuracysdtmodel1.glance <- glance(abstractaccuracysdtmodel1_step1)
+
+
+
+
+#MODEL 2: Lexical + Semantic Predictors
+
+
+
+abstractaccuracysdtmodel1_step2 <- lm(data = abstractaccuracysdtregression, ACC ~ scale(length, scale = FALSE) +
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                       scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                       scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                       scale(semD, scale = FALSE))
+
+abstractaccuracysdtmodel2tidy <- tidy(abstractaccuracysdtmodel1_step2)
+
+#Click here to view model 2 :) 
+abstractaccuracysdtmodel2tidy <- abstractaccuracysdtmodel2tidy %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(abstractaccuracysdtmodel1_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model comparison to get R^2 and Delta R^2
+abstractaccuracymodel1_r2 <- summary(abstractaccuracysdtmodel1_step1)$r.squared
+abstractaccuracymodel2_r2 <- summary(abstractaccuracysdtmodel1_step2)$r.squared
+abstractaccuracydelta_r2 <- abstractaccuracymodel2_r2 - abstractaccuracymodel1_r2
+
+
+abstractaccuracymodel2.glance <- glance(abstractaccuracysdtmodel1_step2)
+
+
+
+# Combine the two tidy datasets
+abstractaccuracycombined_model_tidy <- bind_rows(abstractaccuracysdtmodel1tidy, abstractaccuracysdtmodel2tidy)
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+abstractaccuracycombined_model_tidy <- abstractaccuracycombined_model_tidy %>%
+  mutate(R_squared = ifelse(predictor == "Step 1", abstractaccuracymodel1_r2, 
+                            ifelse(predictor == "Step 2", abstractaccuracymodel2_r2, NA)),
+         Delta_R_squared = ifelse(predictor == "Step 2", abstractaccuracydelta_r2, NA))
+
+# Filter specific rows from combined_model_tidy
+abstractaccuracycombinedmodel <- abstractaccuracycombined_model_tidy %>%
+  slice(c(1:6, 11:15))
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+abstractaccuracygt_table <- gt(abstractaccuracycombinedmodel) %>%
+  tab_header(
+    title = "Accuracy"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  )
+
+
+print(abstractaccuracygt_table)
+
+
+
+```
+
+
+```{r chunkseventeen, include=FALSE}
+# INTERACTION FOR ABSTRACT WORDS IN THE SDT ACCURACY COGNITION X CONCRETENESS
+
+abstractaccuracySDT_dat <- abstractaccuracysdtregression %>% 
+  dplyr::select(-words) 
+abstractaccuracySDT_dat <- abstractaccuracySDT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+SDT_abstractaccuracy <- lm(ACC ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, abstractaccuracySDT_dat)
+
+
+f4 <- interact_plot(SDT_abstractaccuracy, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("Abstract SDT Accuracy") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+
+```{r chunkeighteen, include=FALSE}
+# SEMANTIC DECISION TASK DATA REACTION TIME
+
+###### HIERARCHICAL REGRESSION
+
+#### FOR CONCRETE WORDS
+concretesdtrtdata <- sdtdata[sdtdata$wordtype != "Abstract", ]
+concretesdtregression <- merged_data
+concretesdtregression <- left_join(concretesdtregression, concretesdtrtdata, by = "words")
+concretesdtregression1 <-  dplyr::select(concretesdtregression, words, cognition, val_ext, 
+                                         concreteness, socialness, lg_subtlwf, length, semD,
+                                ao_arating, zRTclean_mean)
+
+concretesdtregression1 <- na.omit(concretesdtregression1)
+
+concretesdtmodel1_step1 <- lm(data = concretesdtregression1, zRTclean_mean ~ scale(length, scale = FALSE) + 
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE))
+
+concretesdtmodel1tidy <- tidy(concretesdtmodel1_step1)
+
+
+#CLICK THIS TO VIEW MODEL WITH ONLY LEXICAL PREDICTORS
+concretesdtmodel1tidy <- concretesdtmodel1tidy %>% 
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round ((statistic^2) / (statistic^2 + df.residual(concretesdtmodel1_step1)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+concretesdtmodel1.glance <- glance(concretesdtmodel1_step1)
+
+
+
+
+#MODEL 2: Lexical + Semantic Predictors
+
+
+
+concretesdtmodel1_step2 <- lm(data = concretesdtregression1, zRTclean_mean ~ scale(length, scale = FALSE) +
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                       scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                       scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                       scale(semD, scale = FALSE))
+
+concretesdtmodel2tidy <- tidy(concretesdtmodel1_step2)
+
+#Click here to view model 2 :) 
+concretesdtmodel2tidy <- concretesdtmodel2tidy %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(concretesdtmodel1_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model comparison to get R^2 and Delta R^2
+concretemodel1_r2 <- summary(concretesdtmodel1_step1)$r.squared
+concretemodel2_r2 <- summary(concretesdtmodel1_step2)$r.squared
+concretedelta_r2 <- concretemodel2_r2 - concretemodel1_r2
+
+
+concretemodel2.glance <- glance(concretesdtmodel1_step2)
+
+
+
+# Combine the two tidy datasets
+concretecombined_model_tidy <- bind_rows(concretesdtmodel1tidy, concretesdtmodel2tidy)
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+concretecombined_model_tidy <- concretecombined_model_tidy %>%
+  mutate(R_squared = ifelse(predictor == "Step 1", concretemodel1_r2, 
+                            ifelse(predictor == "Step 2", concretemodel2_r2, NA)),
+         Delta_R_squared = ifelse(predictor == "Step 2", concretedelta_r2, NA))
+
+# Filter specific rows 
+concretesdtcombinedmodel <- concretecombined_model_tidy %>%
+  slice(c(1:6, 11:15))
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+concretegt_table <- gt(concretesdtcombinedmodel) %>%
+  tab_header(
+    title = "zRTs"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  )
+
+
+print(concretegt_table)
+
+
+
+```
+
+
+
+```{r chunknineteen, include=FALSE}
+
+#INTERACTION FOR CONCRETE WORDS IN THE SDT REACTION TIME COGNITION X CONCRETENESS
+
+concreteSDT_dat <- concretesdtregression1 %>% 
+  dplyr::select(-words) 
+concreteSDT_dat <- concreteSDT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+concreteSDT_RT <- lm(zRTclean_mean ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, concreteSDT_dat)
+
+
+f5 <- interact_plot(concreteSDT_RT, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("Concrete SDT RT") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+
+
+```{r chunktwenty, include=FALSE}
+#SEMANTIC DECISION TASK DATA ACCURACY
+
+###### HIERARCHICAL REGRESSION
+
+#### FOR CONCRETE WORDS
+concreteaccuracysdtregression <-  dplyr::select(concretesdtregression, words, cognition, val_ext, 
+                                         concreteness, socialness, lg_subtlwf, length, semD,
+                                ao_arating, ACC)
+
+concreteaccuracysdtregression <- na.omit(concreteaccuracysdtregression)
+
+concreteaccuracysdtmodel1_step1 <- lm(data = concreteaccuracysdtregression, ACC ~ scale(length, scale = FALSE) + 
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE))
+
+concreteaccuracysdtmodel1tidy <- tidy(concreteaccuracysdtmodel1_step1)
+
+
+#CLICK THIS TO VIEW MODEL WITH ONLY LEXICAL PREDICTORS
+concreteaccuracysdtmodel1tidy <- concreteaccuracysdtmodel1tidy %>% 
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round ((statistic^2) / (statistic^2 + df.residual(concreteaccuracysdtmodel1_step1)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+concreteaccuracysdtmodel1.glance <- glance(concreteaccuracysdtmodel1_step1)
+
+
+
+
+#MODEL 2: Lexical + Semantic Predictors
+
+
+
+concreteaccuracysdtmodel1_step2 <- lm(data = concreteaccuracysdtregression, ACC ~ scale(length, scale = FALSE) +
+                       scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                       scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                       scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                       scale(semD, scale = FALSE))
+
+concreteaccuracysdtmodel2tidy <- tidy(concreteaccuracysdtmodel1_step2)
+
+#Click here to view model 2 :) 
+concreteaccuracysdtmodel2tidy <- concreteaccuracysdtmodel2tidy %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(concreteaccuracysdtmodel1_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model comparison to get R^2 and Delta R^2
+concreteaccuracymodel1_r2 <- summary(concreteaccuracysdtmodel1_step1)$r.squared
+concreteaccuracymodel2_r2 <- summary(concreteaccuracysdtmodel1_step2)$r.squared
+concreteaccuracydelta_r2 <- concreteaccuracymodel2_r2 - concreteaccuracymodel1_r2
+
+
+concreteaccuracymodel2.glance <- glance(concreteaccuracysdtmodel1_step2)
+
+
+
+# Combine the two tidy datasets
+concreteaccuracycombined_model_tidy <- bind_rows(concreteaccuracysdtmodel1tidy, concreteaccuracysdtmodel2tidy)
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+concreteaccuracycombined_model_tidy <- concreteaccuracycombined_model_tidy %>%
+  mutate(R_squared = ifelse(predictor == "Step 1", concreteaccuracymodel1_r2, 
+                            ifelse(predictor == "Step 2", concreteaccuracymodel2_r2, NA)),
+         Delta_R_squared = ifelse(predictor == "Step 2", concreteaccuracydelta_r2, NA))
+
+concreteaccuracysdtcombinedmodel <- concreteaccuracycombined_model_tidy %>%
+  slice(c(1:6, 11:15))
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+concreteaccuracygt_table <- gt(concreteaccuracysdtcombinedmodel) %>%
+  tab_header(
+    title = "Accuracy"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  )
+
+
+print(concreteaccuracygt_table)
+
+
+
+```
+
+```{r chunktwentyone}
+#INTERACTION FOR CONCRETE WORDS IN THE SDT ACCURACY COGNITION X CONCRETENESS
+
+concreteaccuracySDT_dat <- concreteaccuracysdtregression %>% 
+  dplyr::select(-words) 
+concreteaccuracySDT_dat <- concreteaccuracySDT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+SDT_concreteaccuracy <- lm(ACC ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, concreteaccuracySDT_dat)
+
+
+f6 <- interact_plot(SDT_concreteaccuracy, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("Concrete SDT Accuracy") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+
+
+
+```{r chunktwentytwo, include=FALSE}
+
+#WORD KNOWLEDGE TASK REACTION TIME DATA
+
+#HIERARCHICAL REGRESSION
+# Prepare the data
+wordknowledgetaskdata <- merged_data
+wordknowledgetaskdata <- left_join(wordknowledgetaskdata, wktdata, by = "words")
+wordknowledgetaskdata <- dplyr::select(wordknowledgetaskdata, words, cognition, val_ext, 
+                                        concreteness, socialness, lg_subtlwf, length, semD, ao_arating, zrt_mean)
+wordknowledgetaskdata <- na.omit(wordknowledgetaskdata)
+
+# Model 1: Lexical Predictors Only
+wktmodel_step1 <- lm(zrt_mean ~ scale(length, scale = FALSE) + 
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE),
+                  data = wordknowledgetaskdata)
+wktmodel1tidy <- tidy(wktmodel_step1) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(wktmodel_step1)), 3)) %>%
+  rename(predictor = term) %>%
+   mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+
+# Model 2:  Semantic Predictors
+wktmodel_step2 <- lm(zrt_mean ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE), data = wordknowledgetaskdata) 
+  
+wktmodel2tidy <- tidy(wktmodel_step2) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(wktmodel_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+
+
+# Model 3: Adding on a interaction
+wktmodel_step3 <- lm(zrt_mean ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE) + scale(cognition, scale = FALSE) * scale(concreteness, scale = FALSE), data = wordknowledgetaskdata) 
+  
+wktmodel3tidy <- tidy(wktmodel_step3) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(wktmodel_step3)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    predictor == "scale(cognition, scale = FALSE):scale(concreteness, scale = FALSE)" ~ "Cognition X Concreteness",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 3", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+
+
+# Model comparison to get R^2 and Delta R^2
+wktmodel1_r2 <- summary(wktmodel_step1)$r.squared
+wktmodel2_r2 <- summary(wktmodel_step2)$r.squared
+wktmodel3_r2 <- summary(wktmodel_step3)$r.squared
+wktdelta_r2 <- wktmodel2_r2 - wktmodel1_r2
+wktdelta2_r2 <- wktmodel3_r2 - wktmodel2_r2
+
+# Combine the three tidy datasets
+wktcombined_model_tidy <- bind_rows(wktmodel1tidy, wktmodel2tidy, wktmodel3tidy)
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+wktcombined_model_tidy <- wktcombined_model_tidy %>%
+  mutate(
+    R_squared = case_when(
+      predictor == "Step 1" ~ wktmodel1_r2,
+      predictor == "Step 2" ~ wktmodel2_r2,
+      predictor == "Step 3" ~ wktmodel3_r2,
+      TRUE ~ NA_real_
+    ),
+    Delta_R_squared = case_when(
+      predictor == "Step 2" ~ wktdelta_r2,
+      predictor == "Step 3" ~ wktdelta2_r2,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Filter specific rows 
+wktcombinedmodel <- wktcombined_model_tidy %>%
+  slice(c(1:6, 11:16, 26))
+
+
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+wktgt_table <- gt(wktcombinedmodel) %>%
+  tab_header(
+    title = "zRTs"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  ) 
+
+# Print the table
+print(wktgt_table)
+```
+
+
+```{r chunktwentythree, include=FALSE}
+# INTERACTION IN THE WORD KNOWLEDGE TASK REACTION TIME COGNITION X CONCRETENESS
+
+
+WKT_dat <- wordknowledgetaskdata %>% 
+  dplyr::select(-words) 
+WKT_dat <- WKT_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+# fit model RT
+WKT_RT <- lm(zrt_mean ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, WKT_dat)
+
+
+f7 <- interact_plot(WKT_RT, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("WKT RT") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+```{r chunktwentyfour, include=FALSE}
+
+#WORD KNOWLEDGE TASK PREVLANECE 
+# HIERARCHICAL REGRESSION
+wordknowledgetaskdata2 <- merged_data
+prevalencedata <- left_join(wordknowledgetaskdata2, wktdata, by = "words")
+prevalencedata <-  dplyr::select(prevalencedata, words, cognition, val_ext, 
+                                         concreteness, socialness, lg_subtlwf, length, semD, ao_arating, prevalence)
+prevalencedata <- na.omit(prevalencedata)
+
+
+#Lexical Predictors only
+
+prevalencemodel_step1 <- lm(data = prevalencedata, prevalence ~ scale(length, scale = FALSE) + 
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE))
+prevalencemodel1tidy <- tidy(prevalencemodel_step1) %>% 
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round ((statistic^2) / (statistic^2 + df.residual(prevalencemodel_step1)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 1", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+prevalencemodel1.glance <- glance(prevalencemodel_step1)
+
+
+#MODEL 2: Semantic Predictors
+
+
+prevalencemodel_step2 <- lm(data = prevalencedata, prevalence ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE))
+
+
+
+prevalencemodel2tidy <- tidy(prevalencemodel_step2) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(prevalencemodel_step2)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 2", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+
+
+#STEP 3: COGNITION X CONCRETENESS INTERACTION:
+
+#MODEL 2: Semantic Predictors
+
+
+prevalencemodel_step3 <- lm(data = prevalencedata, prevalence ~ scale(length, scale = FALSE) +
+                    scale(lg_subtlwf, scale = FALSE) + scale(ao_arating, scale = FALSE) + 
+                    scale(cognition, scale = FALSE) + scale(concreteness, scale = FALSE) + 
+                    scale(socialness, scale = FALSE) + scale(val_ext, scale = FALSE) +
+                    scale(semD, scale = FALSE) + scale(cognition, scale = FALSE) * scale(concreteness, scale = FALSE))
+
+
+
+prevalencemodel3tidy <- tidy(prevalencemodel_step3) %>%
+  mutate_if(is.numeric, round, 3) %>%
+  mutate(sr_squared = round((statistic^2) / (statistic^2 + df.residual(prevalencemodel_step3)), 3)) %>%
+  rename(predictor = term) %>%
+  mutate(predictor = case_when(
+    predictor == "scale(length, scale = FALSE)" ~ "Length",
+    predictor == "scale(lg_subtlwf, scale = FALSE)" ~ "Frequency",
+    predictor == "scale(ao_arating, scale = FALSE)" ~ "Age of Acquisition",
+    predictor == "scale(cognition, scale = FALSE)" ~ "Cognition",
+    predictor == "scale(concreteness, scale = FALSE)" ~ "Concreteness",
+    predictor == "scale(socialness, scale = FALSE)" ~ "Socialness",
+    predictor == "scale(val_ext, scale = FALSE)" ~ "Valence Extremity",
+    predictor == "scale(semD, scale = FALSE)" ~ "Semantic Diversity",
+    predictor == "scale(cognition, scale = FALSE):scale(concreteness, scale = FALSE)" ~ "Cognition X Concreteness",
+    TRUE ~ predictor
+  )) %>%
+  add_row(predictor = "Step 3", estimate = NA, std.error = NA, statistic = NA, p.value = NA, sr_squared = NA, .before = 1)
+          
+          
+          
+          
+          
+          
+          
+# Model comparison to get R^2 and Delta R^2
+prevalencemodel1_r2 <- summary(prevalencemodel_step1)$r.squared
+prevalencemodel2_r2 <- summary(prevalencemodel_step2)$r.squared
+prevalencemodel3_r2 <- summary(prevalencemodel_step3)$r.squared
+prevalencedelta_r2 <- prevalencemodel2_r2 - prevalencemodel1_r2
+prevalencedelta2_r2 <- prevalencemodel3_r2 - prevalencemodel2_r2
+
+
+# Combine the two tidy datasets
+prevalencecombined_model_tidy <- bind_rows(prevalencemodel1tidy, prevalencemodel2tidy, prevalencemodel3tidy)
+
+
+
+# Add R-squared and Delta R-squared only to the 'Step' rows
+prevalencecombined_model_tidy <- prevalencecombined_model_tidy %>%
+  mutate(
+    R_squared = case_when(
+      predictor == "Step 1" ~ prevalencemodel1_r2,
+      predictor == "Step 2" ~ prevalencemodel2_r2,
+      predictor == "Step 3" ~ prevalencemodel3_r2,
+      TRUE ~ NA_real_
+    ),
+    Delta_R_squared = case_when(
+      predictor == "Step 2" ~ prevalencedelta_r2,
+      predictor == "Step 3" ~ prevalencedelta2_r2,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Filter specific rows from combined_model_tidy
+prevalencecombinedmodel <- prevalencecombined_model_tidy %>%
+  slice(c(1:6, 11:16, 26))
+
+
+# Create the gt table with formatted R_squared and Delta_R_squared
+prevalencegt_table <- gt(prevalencecombinedmodel) %>%
+  tab_header(
+    title = "Prevalence"
+  ) %>%
+  cols_label(
+    predictor = "Predictor",
+    estimate = "b",
+    std.error = "SE",
+    statistic = "t",
+    p.value = "p",
+    sr_squared = "sr²",
+    R_squared = "R²",
+    Delta_R_squared = "ΔR²"
+  ) %>%
+  fmt_number(
+    columns = c("estimate", "std.error", "statistic", "p.value", "sr_squared", "R_squared", "Delta_R_squared"),
+    decimals = 3
+  ) %>%
+  fmt_missing(
+    columns = everything(),
+    missing_text = ""  # Replace NA values with an empty string
+  )
+
+
+print(prevalencegt_table)
+
+
+```
+
+
+
+```{r chunktwentyfive, include=FALSE}
+
+# WORD KNOWLEDGE TASK PREVALENCE INTERACTION
+
+prevalence_dat <- prevalencedata %>% 
+  dplyr::select(-words) 
+prevalence_dat <- prevalence_dat %>% mutate(across(1:8, scale)) # Z-trasnform data
+
+
+# fit model RT
+wkt_prevalence <- lm(prevalence ~ length + lg_subtlwf + semD + ao_arating + val_ext + socialness + concreteness + cognition + cognition*concreteness, prevalence_dat)
+
+
+f8 <- interact_plot(wkt_prevalence, pred = cognition, modx = concreteness, interval = TRUE, modx.values = "plus-minus", colors = c("#ddc000", "#79ad41"), y.label = element_blank()) +
+  ggtitle("WKT Prevalence") +
+  theme_prism(base_size = 11) + theme(legend.position= "none", axis.title.x = element_blank()) +
+  scale_x_continuous(breaks = c(-1, 0, 1, 2))
+```
+
+
